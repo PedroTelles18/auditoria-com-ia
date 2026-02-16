@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from app.auth import verificar_senha, gerar_hash_senha, criar_token, verificar_token
@@ -9,9 +10,16 @@ from app.scanner import escanear_texto
 
 app = FastAPI(title="Sistema de Auditoria LGPD", version="1.0.0")
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 
-# Models
 class UsuarioCreate(BaseModel):
     nome: str
     email: str
@@ -20,7 +28,6 @@ class UsuarioCreate(BaseModel):
 class TextoParaEscanear(BaseModel):
     texto: str
 
-# Endpoints
 @app.get("/")
 def inicio():
     return {"mensagem": "Sistema de Auditoria LGPD funcionando"}
