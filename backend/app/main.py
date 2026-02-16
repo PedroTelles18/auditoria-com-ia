@@ -5,16 +5,22 @@ from pydantic import BaseModel
 from app.auth import verificar_senha, gerar_hash_senha, criar_token, verificar_token
 from app.database import get_db
 from app.models import Usuario
+from app.scanner import escanear_texto
 
 app = FastAPI(title="Sistema de Auditoria LGPD", version="1.0.0")
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 
+# Models
 class UsuarioCreate(BaseModel):
     nome: str
     email: str
     senha: str
 
+class TextoParaEscanear(BaseModel):
+    texto: str
+
+# Endpoints
 @app.get("/")
 def inicio():
     return {"mensagem": "Sistema de Auditoria LGPD funcionando"}
@@ -49,3 +55,11 @@ def meu_perfil(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db
         raise HTTPException(status_code=401, detail="Token inválido")
     usuario = db.query(Usuario).filter(Usuario.email == payload.get("sub")).first()
     return {"nome": usuario.nome, "email": usuario.email}
+
+@app.post("/escanear")
+def escanear(dados: TextoParaEscanear, token: str = Depends(oauth2_scheme)):
+    payload = verificar_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Token inválido")
+    resultado = escanear_texto(dados.texto)
+    return resultado
