@@ -1,41 +1,51 @@
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from app.auth import verificar_senha, gerar_hash_senha, criar_token, verificar_token
+from app.database import get_db
+from app.models import Usuario
 
 app = FastAPI(title="Sistema de Auditoria LGPD", version="1.0.0")
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 
-# Banco de usuários temporário (depois vamos conectar ao PostgreSQL)
-usuarios_db = {
-    "admin": {
-        "nome": "Administrador",
-        "email": "admin@lgpd.com",
-        "senha_hash": gerar_hash_senha("senha123")
-    }
-}
-
-class Usuario(BaseModel):
+class UsuarioCreate(BaseModel):
     nome: str
     email: str
+    senha: str
 
 @app.get("/")
 def inicio():
-    return {"mensagem": "Sistema de Auditoria LGPD funcionando!"}
+    return {"mensagem": "Sistema de Auditoria LGPD funcionando"}
+
+@app.post("/registrar")
+def registrar(usuario: UsuarioCreate, db: Session = Depends(get_db)):
+    existe = db.query(Usuario).filter(Usuario.email == usuario.email).first()
+    if existe:
+        raise HTTPException(status_code=400, detail="Email já cadastrado")
+    novo = Usuario(
+        nome=usuario.nome,
+        email=usuario.email,
+        senha_hash=gerar_hash_senha(usuario.senha)
+    )
+    db.add(novo)
+    db.commit()
+    db.refresh(novo)
+    return {"mensagem": "Usuário criado com sucesso", "id": novo.id}
 
 @app.post("/login")
-def login(form: OAuth2PasswordRequestForm = Depends()):
-    usuario = usuarios_db.get(form.username)
-    if not usuario or not verificar_senha(form.password, usuario["senha_hash"]):
-        raise HTTPException(status_code=401, detail="Usuário ou senha incorretos")
-    token = criar_token({"sub": form.username})
+def login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    usuario = db.query(Usuario).filter(Usuario.email == form.username).first()
+    if not usuario or not verificar_senha(form.password, usuario.senha_hash):
+        raise HTTPException(status_code=401, detail="Email ou senha incorretos")
+    token = criar_token({"sub": usuario.email})
     return {"access_token": token, "token_type": "bearer"}
 
 @app.get("/meu-perfil")
-def meu_perfil(token: str = Depends(oauth2_scheme)):
+def meu_perfil(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     payload = verificar_token(token)
     if not payload:
         raise HTTPException(status_code=401, detail="Token inválido")
-    usuario = usuarios_db.get(payload.get("sub"))
-    return {"nome": usuario["nome"], "email": usuario["email"]}
+    usuario = db.query(Usuario).filter(Usuario.email == payload.get("sub")).first()
+    return {"nome": usuario.nome, "email": usuario.email}
